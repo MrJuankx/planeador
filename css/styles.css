@@ -27,6 +27,9 @@
 
 * { box-sizing: border-box; }
 
+/* Asegura que [hidden] gane sobre cualquier regla con display: explícito. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
