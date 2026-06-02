@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planeador de Actividades — Talento Humano FNSP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- ============================= LOGIN SCREEN ============================= -->
+  <section id="login-screen" class="screen login-screen">
+    <div class="login-card">
+      <div class="login-mark">FNSP</div>
+      <h1 class="login-title">Planeador de Actividades</h1>
+      <p class="login-subtitle">Talento Humano · Acceso restringido</p>
+      <div id="google-signin-btn" class="google-btn-wrapper"></div>
+      <p id="login-error" class="login-error" hidden></p>
+      <p class="login-foot">Inicia sesión con una cuenta de Google previamente autorizada.</p>
+    </div>
+  </section>
+
+  <!-- ============================= APP SHELL ============================= -->
+  <section id="app-screen" class="screen app-screen" hidden>
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark">FNSP</div>
+        <div class="brand-text">
+          <span class="brand-title">Planeador de Actividades</span>
+          <span class="brand-sub">Talento Humano</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="sync-indicator" class="sync-indicator" title="Estado de sincronización">
+          <span class="sync-dot"></span><span class="sync-text">Listo</span>
+        </span>
+        <div class="user-chip">
+          <img id="user-avatar" alt="" />
+          <span id="user-name"></span>
+          <button id="logout-btn" class="link-btn" title="Cerrar sesión">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <nav class="tabs-bar">
+      <div id="tabs" class="tabs"></div>
+      <button id="add-tab-btn" class="ghost-btn" title="Crear nueva categoría">+ Categoría</button>
+    </nav>
+
+    <main class="content">
+      <div class="toolbar">
+        <h2 id="current-tab-title" class="content-title"></h2>
+        <div class="toolbar-actions">
+          <button id="add-column-btn" class="ghost-btn">+ Columna</button>
+          <button id="add-row-btn" class="primary-btn">+ Actividad</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="planner-table" class="planner-table">
+          <thead><tr id="planner-head"></tr></thead>
+          <tbody id="planner-body"></tbody>
+        </table>
+        <div id="empty-state" class="empty-state" hidden>
+          <p>No hay actividades en esta categoría.</p>
+          <button class="primary-btn" onclick="document.getElementById('add-row-btn').click()">Agregar la primera</button>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- ============================= MODAL: Add column ============================= -->
+  <dialog id="column-modal" class="modal">
+    <form method="dialog" class="modal-form">
+      <h3>Nueva columna</h3>
+      <label>
+        Nombre
+        <input id="col-name" type="text" required maxlength="40" placeholder="Ej. Prioridad" />
+      </label>
+      <label>
+        Tipo
+        <select id="col-type">
+          <option value="text">Texto corto</option>
+          <option value="longtext">Texto largo</option>
+          <option value="date">Fecha</option>
+          <option value="status">Estado (dropdown)</option>
+          <option value="person">Responsable</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button value="cancel" class="ghost-btn">Cancelar</button>
+        <button id="col-submit" value="ok" class="primary-btn">Crear</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============================= MODAL: Add tab ============================= -->
+  <dialog id="tab-modal" class="modal">
+    <form method="dialog" class="modal-form">
+      <h3>Nueva categoría</h3>
+      <label>
+        Nombre
+        <input id="tab-name" type="text" required maxlength="40" placeholder="Ej. Capacitaciones" />
+      </label>
+      <label>
+        Color
+        <input id="tab-color" type="color" value="#6D8FB8" />
+      </label>
+      <div class="modal-actions">
+        <button value="cancel" class="ghost-btn">Cancelar</button>
+        <button value="ok" class="primary-btn">Crear</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============================= TOAST ============================= -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- ============================= SCRIPTS ============================= -->
+  <!-- Google Identity Services (Sign-In + OAuth). Las llamadas a Sheets/Calendar
+       se hacen vía fetch() con el access token, no requieren gapi. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- App -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/sheets.js"></script>
+  <script src="js/calendar.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
