@@ -235,13 +235,23 @@ button, input, select, textarea {
   white-space: nowrap;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
 }
 .tab:hover { color: var(--text); }
 .tab.active {
   color: var(--text);
   border-bottom-color: var(--tab-color, var(--primary));
 }
+.tab.dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+.tab.drop-before { box-shadow: inset 3px 0 0 var(--primary); }
+.tab.drop-after  { box-shadow: inset -3px 0 0 var(--primary); }
+
 .tab-color-dot {
   display: inline-block;
   width: 8px;
@@ -250,7 +260,37 @@ button, input, select, textarea {
   margin-right: 8px;
   vertical-align: middle;
   background: var(--tab-color, var(--primary));
+  flex-shrink: 0;
 }
+
+.tab-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 10px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.06);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border: none;
+  padding: 0;
+}
+.tab-delete-btn:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.ghost-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.ghost-btn.active:hover { background: var(--primary-hover); }
 
 /* ============================== CONTENT ============================== */
 .content {

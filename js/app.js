@@ -9,6 +9,8 @@
   const state = {
     currentTabTitle: null,   // Hoja activa en el UI (== sheet title)
     rowsBuffer: {},          // Cambios pendientes por debounce: { rowId: { col: val } }
+    editMode: false,         // Si true, las pestañas muestran botón × para eliminar
+    drag: { dragged: null, drop: null },  // estado del drag-reordenar
   };
 
   // ============================== Init ==============================
@@ -20,6 +22,7 @@
     // Botones globales
     $("#logout-btn").addEventListener("click", () => Auth.signOut());
     $("#add-tab-btn").addEventListener("click", openAddTab);
+    $("#edit-tabs-btn").addEventListener("click", toggleEditMode);
     $("#add-column-btn").addEventListener("click", openAddColumn);
     $("#add-row-btn").addEventListener("click", onAddRow);
   }
@@ -67,27 +70,154 @@
   function renderTabs() {
     const bar = $("#tabs");
     bar.innerHTML = "";
-    // Sólo mostramos hojas no técnicas Y que tengan schema registrado en _meta
-    // (descarta hojas residuales como la "Sheet1" creada por defecto al crear el workbook).
-    const titles = Object.keys(Sheets.cache.sheetsByTitle).filter(t => {
-      if (t.startsWith("_")) return false;
-      return Sheets.getSchema(t).length > 0;
-    });
-    // Ordenar: primero los del config, luego los nuevos por orden de creación.
-    const ordered = [];
-    for (const t of cfg.tabs) if (titles.includes(t.name)) ordered.push(t.name);
-    for (const t of titles) if (!ordered.includes(t)) ordered.push(t);
+    // Sólo mostramos hojas no técnicas Y que tengan schema registrado en _meta.
+    // El orden lo da el índice real del sheet en el workbook (persistente).
+    const titles = Object.keys(Sheets.cache.sheetsByTitle)
+      .filter(t => !t.startsWith("_") && Sheets.getSchema(t).length > 0)
+      .sort((a, b) => Sheets.cache.sheetsByTitle[a].index - Sheets.cache.sheetsByTitle[b].index);
 
-    for (const title of ordered) {
+    for (const title of titles) {
       const btn = el("button", {
         class: "tab" + (title === state.currentTabTitle ? " active" : ""),
         style: { "--tab-color": tabColor(title) },
+        draggable: "true",
         onClick: () => selectTab(title),
       }, [
         el("span", { class: "tab-color-dot" }),
         title,
+        state.editMode ? el("span", {
+          class: "tab-delete-btn",
+          title: "Eliminar categoría",
+          onClick: (e) => { e.stopPropagation(); onDeleteTab(title); },
+        }, ["×"]) : null,
       ]);
+      attachTabDragHandlers(btn, title);
       bar.appendChild(btn);
+    }
+
+    // Reflejar el modo edición en el botón "Editar"
+    const editBtn = $("#edit-tabs-btn");
+    if (editBtn) {
+      editBtn.classList.toggle("active", state.editMode);
+      editBtn.textContent = state.editMode ? "✓ Listo" : "✎ Editar";
+    }
+  }
+
+  // ============================== Drag & drop de pestañas ==============================
+
+  function attachTabDragHandlers(btn, title) {
+    btn.addEventListener("dragstart", (e) => {
+      state.drag.dragged = title;
+      btn.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      // Necesario en Firefox para que dispare drag.
+      try { e.dataTransfer.setData("text/plain", title); } catch (_) {}
+    });
+    btn.addEventListener("dragend", () => {
+      btn.classList.remove("dragging");
+      $$(".tab.drop-before, .tab.drop-after").forEach(t =>
+        t.classList.remove("drop-before", "drop-after")
+      );
+      state.drag.dragged = null;
+      state.drag.drop = null;
+    });
+    btn.addEventListener("dragover", (e) => {
+      if (!state.drag.dragged || state.drag.dragged === title) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const rect = btn.getBoundingClientRect();
+      const before = (e.clientX - rect.left) < rect.width / 2;
+      btn.classList.toggle("drop-before", before);
+      btn.classList.toggle("drop-after", !before);
+      state.drag.drop = { title, before };
+    });
+    btn.addEventListener("dragleave", () => {
+      btn.classList.remove("drop-before", "drop-after");
+    });
+    btn.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      const drag = state.drag.dragged;
+      const drop = state.drag.drop;
+      state.drag.dragged = null;
+      state.drag.drop = null;
+      btn.classList.remove("drop-before", "drop-after");
+      if (!drag || !drop || drag === drop.title) return;
+      await reorderTabsAfterDrop(drag, drop.title, drop.before);
+    });
+  }
+
+  async function reorderTabsAfterDrop(draggedTitle, dropOnTitle, before) {
+    const dropMeta = Sheets.cache.sheetsByTitle[dropOnTitle];
+    const draggedMeta = Sheets.cache.sheetsByTitle[draggedTitle];
+    if (!dropMeta || !draggedMeta) return;
+
+    // Índice destino "before the move" según la semántica de la API de Sheets:
+    // - drop antes → coger la posición de la pestaña destino
+    // - drop después → posición destino + 1
+    let target = before ? dropMeta.index : dropMeta.index + 1;
+    // Si el dragged está antes en la lista, se libera un slot al moverse,
+    // así que el destino se corre uno hacia atrás.
+    if (draggedMeta.index < target) target -= 1;
+
+    setSync("syncing");
+    try {
+      await Sheets.reorderTab(draggedTitle, target);
+      renderTabs();
+      setSync("idle");
+    } catch (e) {
+      console.error(e);
+      setSync("error");
+      toast("Error al reordenar: " + e.message, "error");
+    }
+  }
+
+  // ============================== Modo edición + eliminar pestaña ==============================
+
+  function toggleEditMode() {
+    state.editMode = !state.editMode;
+    renderTabs();
+    if (state.editMode) {
+      toast("Modo edición: pulsa la × en una pestaña para eliminarla.", "");
+    }
+  }
+
+  async function onDeleteTab(title) {
+    if (!confirm(
+      `¿Eliminar la categoría "${title}"?\n\n` +
+      "Esto borrará la hoja del Google Sheet y todas sus actividades.\n" +
+      "Esta acción no se puede deshacer."
+    )) return;
+
+    setSync("syncing");
+    try {
+      await Sheets.deleteTab(title);
+
+      // Si era la pestaña activa, saltar a otra
+      if (state.currentTabTitle === title) {
+        const remaining = Object.keys(Sheets.cache.sheetsByTitle)
+          .filter(t => !t.startsWith("_") && Sheets.getSchema(t).length > 0)
+          .sort((a, b) => Sheets.cache.sheetsByTitle[a].index - Sheets.cache.sheetsByTitle[b].index);
+        if (remaining.length) {
+          await selectTab(remaining[0]);
+        } else {
+          state.currentTabTitle = null;
+          $("#current-tab-title").textContent = "Sin categorías";
+          $("#planner-head").innerHTML = "";
+          $("#planner-body").innerHTML = "";
+          $("#empty-state").hidden = false;
+          $("#planner-table").hidden = true;
+          renderTabs();
+        }
+      } else {
+        renderTabs();
+      }
+
+      setSync("idle");
+      toast("Categoría eliminada.", "success");
+    } catch (e) {
+      console.error(e);
+      setSync("error");
+      toast("Error al eliminar: " + e.message, "error");
     }
   }
 

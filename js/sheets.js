@@ -142,15 +142,21 @@ window.Sheets = (function () {
       await setSheetHidden(META_SHEET, true);
     }
 
-    // 2) Crear hojas faltantes según config
-    for (const tab of cfg.tabs) {
-      if (!cache.sheetsByTitle[tab.name]) {
-        await addSheet(tab.name, tab.color);
-        await initSheetWithDefaults(tab.name);
-      }
-    }
-
     await loadAllSchemas();
+
+    // 2) Sólo crear las pestañas por defecto si el workbook no tiene ninguna
+    //    pestaña registrada todavía (primera instalación). Una vez el usuario
+    //    elimine pestañas, NO las resucitamos al recargar.
+    const hasAnySchema = Object.keys(cache.schema).length > 0;
+    if (!hasAnySchema) {
+      for (const tab of cfg.tabs) {
+        if (!cache.sheetsByTitle[tab.name]) {
+          await addSheet(tab.name, tab.color);
+          await initSheetWithDefaults(tab.name);
+        }
+      }
+      await loadAllSchemas();
+    }
   }
 
   async function initSheetWithDefaults(sheetTitle) {
@@ -389,6 +395,58 @@ window.Sheets = (function () {
     await loadAllSchemas();
   }
 
+  // Reordenar pestaña: cambia el índice de la hoja dentro del workbook.
+  // newIndex sigue la semántica "before the move" de Google Sheets.
+  async function reorderTab(title, newIndex) {
+    const sheetId = cache.sheetsByTitle[title]?.sheetId;
+    if (sheetId == null) throw new Error("Pestaña no encontrada");
+    await api(":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{
+          updateSheetProperties: {
+            properties: { sheetId, index: newIndex },
+            fields: "index",
+          }
+        }]
+      }),
+    });
+    await getWorkbook();  // refresca índices en el cache
+  }
+
+  // Eliminar pestaña: borra la hoja y limpia _meta.
+  async function deleteTab(title) {
+    const sheetId = cache.sheetsByTitle[title]?.sheetId;
+    if (sheetId == null) throw new Error("Pestaña no encontrada");
+    if (title === META_SHEET || title.startsWith("_")) {
+      throw new Error("No se puede eliminar una pestaña del sistema");
+    }
+    // 1) Borrar la hoja
+    await api(":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{ deleteSheet: { sheetId } }]
+      }),
+    });
+    // 2) Limpiar _meta — quitar filas de esa pestaña
+    const meta = await readRange(META_SHEET, "A2:E");
+    const others = (meta || []).filter(r => r[0] !== title);
+    const sheetIdMeta = cache.sheetsByTitle[META_SHEET].sheetId;
+    await api(":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{
+          updateCells: { range: { sheetId: sheetIdMeta, startRowIndex: 1 }, fields: "userEnteredValue" }
+        }]
+      }),
+    });
+    if (others.length) await writeRange(META_SHEET, 2, 0, others);
+    // 3) Limpiar caches locales y refrescar índices de las demás pestañas
+    delete cache.schema[title];
+    delete cache.rows[title];
+    await getWorkbook();
+  }
+
   // ============================== Public API ==============================
 
   return {
@@ -403,6 +461,8 @@ window.Sheets = (function () {
     addColumn,
     deleteColumn,
     addTab,
+    reorderTab,
+    deleteTab,
     // cache (lectura)
     cache,
   };
